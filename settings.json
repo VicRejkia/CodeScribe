@@ -1,0 +1,29 @@
+{
+    "extension_map": {
+        ".py": "python",
+        ".sql": "sql",
+        ".js": "javascript",
+        ".html": "html",
+        ".css": "css",
+        ".json": "json",
+        ".md": "markdown",
+        ".txt": "text",
+        ".yml": "yaml",
+        ".yaml": "yaml",
+        ".toml": "toml",
+        ".ini": "ini",
+        ".sh": "bash",
+        ".bat": "batch",
+        ".dockerfile": "dockerfile"
+    },
+    "exclude_list": [
+        "__pycache__",
+        ".git",
+        ".vscode",
+        "node_modules",
+        "venv",
+        ".env",
+        "__init__.py"
+    ],
+    "exclude_dotfiles": true
+}
