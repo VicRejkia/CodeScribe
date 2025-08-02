@@ -59,4 +59,4 @@ Got an idea to make CodeScribe even better? Contributions are welcome\! Feel fre
 
 ## **License 📄**
 
-This project is licensed under the Apache License 2.0. See the [LICENSE](https://www.google.com/search?q=LICENSE) file for details.
+This project is licensed under the Apache License 2.0. See the [LICENSE](hhttps://github.com/VicRejkia/CodeScribe/blob/main/LICENSE) file for details.
