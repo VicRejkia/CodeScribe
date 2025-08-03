@@ -38,13 +38,13 @@ This gives the AI the best possible chance of understanding your project's archi
 2. **Run the Script:**  
 
     ```shell
-    python LLM-Sherpa.py
+    python llm-sherpa.py
     ```
 
    You can also optionally pass a project path as a command-line argument to auto-load it on startup:  
 
    ```shell
-   python LLM-Sherpa.py "C:\\path\\to\\your\\project"
+   python llm-sherpa.py "C:\\path\\to\\your\\project"
    ```
 
 3. **Select a Folder:** Click the "Select Project Folder" button to load your codebase into the tree view.  
