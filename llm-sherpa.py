@@ -108,7 +108,7 @@ class SettingsWindow(tk.Toplevel):
 
 class ProjectDocumenter:
     def __init__(self, root):
-        self.root = root; self.root.title("Project Documenter"); self.root.geometry("800x650")
+        self.root = root; self.root.title("LLM-Sherpa"); self.root.geometry("800x650")
         self.settings_manager = SettingsManager(); self.project_path = ""; self.file_states = {}
         self.create_ui()
 

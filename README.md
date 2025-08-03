@@ -1,14 +1,14 @@
-# **CodeScribe 📜✍️**
+# **LLM-Sherpa 📜✍️**
 
 **Tired of explaining your sprawling, majestic, and *slightly* chaotic codebase to a Large Language Model?** Do you find yourself manually copy-pasting files, hoping the AI understands that `utils_final_final_v2.py` is, in fact, the most important file?
 
-Fear not, weary developer\! **CodeScribe** is here to be the overly-organized, slightly-caffeinated intern you wish you had. It takes your beautiful mess of a project, lets you pick the good parts, and bundles it all into a single, pristine Markdown file that any LLM would be delighted to read.
+Fear not, weary developer\! **LLM-Sherpa** is here to be the overly-organized, slightly-caffeinated intern you wish you had. It takes your beautiful mess of a project, lets you pick the good parts, and bundles it all into a single, pristine Markdown file that any LLM would be delighted to read.
 
 Think of it as a diplomatic envoy for your code, ensuring it makes the best possible first impression.
 
 ## **What is this madness?**
 
-In short, **CodeScribe** is a Python GUI application that helps you package source code into a single, context-rich Markdown file. The goal is to create a perfect "prompt artifact" for Large Language Models. Instead of just pasting raw code, you're providing a structured document that includes:
+In short, **LLM-Sherpa** is a Python GUI application that helps you package source code into a single, context-rich Markdown file. The goal is to create a perfect "prompt artifact" for Large Language Models. Instead of just pasting raw code, you're providing a structured document that includes:
 
 * A file tree of the selected components.  
 * Clearly separated dependency files (`requirements.txt`, etc.).  
@@ -38,13 +38,13 @@ This gives the AI the best possible chance of understanding your project's archi
 2. **Run the Script:**  
 
     ```shell
-    python CodeScribe.py
+    python LLM-Sherpa.py
     ```
 
    You can also optionally pass a project path as a command-line argument to auto-load it on startup:  
 
    ```shell
-   python CodeScribe.py "C:\\path\\to\\your\\project"
+   python LLM-Sherpa.py "C:\\path\\to\\your\\project"
    ```
 
 3. **Select a Folder:** Click the "Select Project Folder" button to load your codebase into the tree view.  
@@ -55,8 +55,8 @@ This gives the AI the best possible chance of understanding your project's archi
 
 ## **Contributing 🤝**
 
-Got an idea to make CodeScribe even better? Contributions are welcome\! Feel free to fork the repository, make your changes, and submit a pull request.
+Got an idea to make LLM-Sherpa even better? Contributions are welcome\! Feel free to fork the repository, make your changes, and submit a pull request.
 
 ## **License 📄**
 
-This project is licensed under the Apache License 2.0. See the [LICENSE](https://github.com/VicRejkia/CodeScribe/blob/main/LICENSE) file for details.
+This project is licensed under the Apache License 2.0. See the [LICENSE](https://github.com/VicRejkia/LLM-Sherpa/blob/main/LICENSE) file for details.
