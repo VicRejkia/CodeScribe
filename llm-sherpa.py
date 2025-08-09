@@ -3,17 +3,23 @@ import sys
 import json
 import ast
 import re
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
 from datetime import datetime
 import ctypes
 from ctypes import wintypes
-from collections import defaultdict
 
-# --- Unchanged Functions: get_long_path_name ---
+# --- PySide6 Imports ---
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QPushButton, QTreeView, QTextEdit, QFileDialog, QMessageBox,
+    QDialog, QCheckBox, QLabel, QDialogButtonBox, QStatusBar
+)
+from PySide6.QtGui import QStandardItemModel, QStandardItem
+from PySide6.QtCore import Qt, Slot
+
+# --- UNCHANGED: get_long_path_name & SettingsManager ---
+# This helper function and class are independent of the UI framework.
 def get_long_path_name(short_path):
-    if sys.platform != 'win32':
-        return short_path
+    if sys.platform != 'win32': return short_path
     try:
         _GetLongPathNameW = ctypes.windll.kernel32.GetLongPathNameW
         _GetLongPathNameW.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD]
@@ -24,8 +30,7 @@ def get_long_path_name(short_path):
         result = _GetLongPathNameW(short_path, long_path_buffer, buffer_size)
         if result == 0: return short_path
         return long_path_buffer.value
-    except Exception:
-        return short_path
+    except Exception: return short_path
 
 class SettingsManager:
     def __init__(self, filename="settings.json"):
@@ -36,225 +41,267 @@ class SettingsManager:
 
     def _create_default_settings(self):
         return {
-            "extension_map": {
-                ".py": "python", ".sql": "sql", ".js": "javascript",
-                ".html": "html", ".css": "css", ".json": "json",
-                ".md": "markdown", ".txt": "text", ".yml": "yaml",
-                ".yaml": "yaml", ".toml": "toml", ".ini": "ini",
-                ".sh": "bash", ".bat": "batch", ".dockerfile": "dockerfile"
-            },
-            "exclude_list": [
-                "__pycache__", ".git", ".vscode", "node_modules", "venv", ".env"
-            ],
-            "exclude_dotfiles": True,
-            # --- NEW: Setting to control project structure visibility ---
-            "show_project_structure": True
+            "extension_map": { ".py": "python", ".sql": "sql", ".js": "javascript", ".html": "html", ".css": "css", ".json": "json", ".md": "markdown", ".txt": "text", ".yml": "yaml", ".yaml": "yaml", ".toml": "toml", ".ini": "ini", ".sh": "bash", ".bat": "batch", ".dockerfile": "dockerfile" },
+            "exclude_list": [ "__pycache__", ".git", ".vscode", "node_modules", "venv", ".env" ],
+            "exclude_dotfiles": True, "show_project_structure": True
         }
 
     def load_settings(self):
         try:
             with open(self.filename, 'r') as f:
                 loaded_settings = json.load(f)
-                # --- CHANGED: Ensure new settings have default values ---
-                defaults = self._create_default_settings()
-                defaults.update(loaded_settings)
-                self.settings = defaults
+                defaults = self._create_default_settings(); defaults.update(loaded_settings); self.settings = defaults
         except (FileNotFoundError, json.JSONDecodeError):
-            self.settings = self._create_default_settings()
-            self.save_settings()
-
+            self.settings = self._create_default_settings(); self.save_settings()
 
     def save_settings(self):
         try:
             with open(self.filename, 'w') as f: json.dump(self.settings, f, indent=4)
-        except IOError as e:
-            messagebox.showerror("Settings Error", f"Could not save settings: {e}")
+        except IOError as e: print(f"Settings Error: Could not save settings: {e}")
 
     def get(self, key): return self.settings.get(key)
     def set(self, key, value): self.settings[key] = value
 
-class SettingsWindow(tk.Toplevel):
-    def __init__(self, parent, settings_manager, on_close_callback):
+# --- NEW: PySide6 Settings Dialog ---
+class SettingsWindow(QDialog):
+    def __init__(self, settings_manager, parent=None):
         super().__init__(parent)
         self.settings_manager = settings_manager
-        self.on_close_callback = on_close_callback
-        self.title("Settings"); self.transient(parent); self.grab_set()
-        self.create_widgets()
-        self.protocol("WM_DELETE_WINDOW", self.destroy)
-
-    def create_widgets(self):
-        main_frame = ttk.Frame(self, padding="10"); main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Exclusion and Options Frame
-        options_frame = ttk.LabelFrame(main_frame, text="Options", padding="10"); options_frame.pack(fill=tk.X, expand=True, pady=5)
-        self.exclude_dotfiles_var = tk.BooleanVar(value=self.settings_manager.get("exclude_dotfiles"))
-        ttk.Checkbutton(options_frame, text="Exclude all files and folders starting with '.'", variable=self.exclude_dotfiles_var).pack(anchor=tk.W)
+        self.setWindowTitle("Settings")
+        self.setMinimumWidth(500)
         
-        # --- NEW: Checkbox for showing project structure ---
-        self.show_structure_var = tk.BooleanVar(value=self.settings_manager.get("show_project_structure"))
-        ttk.Checkbutton(options_frame, text="Include 'Project Structure' tree in output", variable=self.show_structure_var).pack(anchor=tk.W)
+        layout = QVBoxLayout(self)
 
-        # Exclude list frame
-        exclude_frame = ttk.LabelFrame(main_frame, text="Exclusion Filters", padding="10"); exclude_frame.pack(fill=tk.X, expand=True, pady=5)
-        ttk.Label(exclude_frame, text="Exclude files/folders by name (one per line):").pack(anchor=tk.W)
-        self.exclude_text = tk.Text(exclude_frame, height=8, width=50); self.exclude_text.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
-        self.exclude_text.insert("1.0", "\n".join(self.settings_manager.get("exclude_list")))
+        # Options
+        self.exclude_dotfiles_chk = QCheckBox("Exclude all files and folders starting with '.'")
+        self.exclude_dotfiles_chk.setChecked(self.settings_manager.get("exclude_dotfiles"))
+        layout.addWidget(self.exclude_dotfiles_chk)
+        
+        self.show_structure_chk = QCheckBox("Include 'Project Structure' tree in output")
+        self.show_structure_chk.setChecked(self.settings_manager.get("show_project_structure"))
+        layout.addWidget(self.show_structure_chk)
 
-        # Mappings Frame
-        ext_frame = ttk.LabelFrame(main_frame, text="File Type Mappings", padding="10"); ext_frame.pack(fill=tk.BOTH, expand=True, pady=5)
-        ttk.Label(ext_frame, text="Map extensions to Markdown language identifiers:").pack(anchor=tk.W)
-        self.ext_map_text = tk.Text(ext_frame, height=10, width=50); self.ext_map_text.pack(fill=tk.BOTH, expand=True)
-        self.ext_map_text.insert("1.0", json.dumps(self.settings_manager.get("extension_map"), indent=4))
+        # Exclusion Filters
+        layout.addWidget(QLabel("\nExclude files/folders by name (one per line):"))
+        self.exclude_text = QTextEdit()
+        self.exclude_text.setText("\n".join(self.settings_manager.get("exclude_list")))
+        layout.addWidget(self.exclude_text)
 
-        # Buttons
-        button_frame = ttk.Frame(main_frame); button_frame.pack(fill=tk.X, pady=10)
-        ttk.Button(button_frame, text="Save & Close", command=self.save_and_close).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(button_frame, text="Cancel", command=self.destroy).pack(side=tk.RIGHT)
+        # Mappings
+        layout.addWidget(QLabel("\nMap extensions to Markdown language identifiers:"))
+        self.ext_map_text = QTextEdit()
+        ext_map_str = json.dumps(self.settings_manager.get("extension_map"), indent=4)
+        self.ext_map_text.setText(ext_map_str)
+        layout.addWidget(self.ext_map_text)
 
-    def save_and_close(self):
-        exclude_list = self.exclude_text.get("1.0", tk.END).strip().split("\n")
+        # Dialog Buttons
+        self.button_box = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+        layout.addWidget(self.button_box)
+
+    def accept(self):
+        # Save settings when 'Save' is clicked
+        self.settings_manager.set("exclude_dotfiles", self.exclude_dotfiles_chk.isChecked())
+        self.settings_manager.set("show_project_structure", self.show_structure_chk.isChecked())
+        
+        exclude_list = self.exclude_text.toPlainText().strip().split("\n")
         self.settings_manager.set("exclude_list", [item.strip() for item in exclude_list if item.strip()])
-        self.settings_manager.set("exclude_dotfiles", self.exclude_dotfiles_var.get())
         
-        # --- NEW: Save the state of the new checkbox ---
-        self.settings_manager.set("show_project_structure", self.show_structure_var.get())
-        
-        ext_map_str = self.ext_map_text.get("1.0", tk.END)
         try:
-            new_ext_map = ast.literal_eval(ext_map_str)
-            if not isinstance(new_ext_map, dict): raise ValueError("Input is not a valid dictionary.")
+            new_ext_map = ast.literal_eval(self.ext_map_text.toPlainText())
+            if not isinstance(new_ext_map, dict): raise ValueError("Input is not a dictionary.")
             self.settings_manager.set("extension_map", new_ext_map)
         except (ValueError, SyntaxError) as e:
-            messagebox.showerror("Invalid Format", f"File type mapping is not a valid Python dictionary.\nError: {e}", parent=self)
+            QMessageBox.critical(self, "Invalid Format", f"File type mapping is not a valid Python dictionary.\nError: {e}")
             return
+
         self.settings_manager.save_settings()
-        self.on_close_callback()
-        self.destroy()
+        super().accept()
 
-# --- Unchanged Class: ProjectDocumenter (except for generate_markdown) ---
-class ProjectDocumenter:
-    def __init__(self, root):
-        self.root = root; self.root.title("LLM-Sherpa"); self.root.geometry("800x750")
-        self.settings_manager = SettingsManager(); self.project_path = ""; self.file_states = {}
-        self.create_ui()
+# --- NEW: PySide6 Main Application Window ---
+class ProjectDocumenter(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("LLM-Sherpa - Project Documenter v0.1")
+        self.setGeometry(100, 100, 800, 750)
 
-    def create_ui(self):
-        top_frame = ttk.Frame(self.root); top_frame.pack(pady=10, padx=10, fill=tk.X)
-        self.select_btn = ttk.Button(top_frame, text="Select Project Folder", command=self.select_folder_dialog); self.select_btn.pack(side=tk.LEFT, padx=5)
-        self.generate_btn = ttk.Button(top_frame, text="Generate Documentation", command=self.generate_markdown, state=tk.DISABLED); self.generate_btn.pack(side=tk.LEFT, padx=5)
-        self.settings_btn = ttk.Button(top_frame, text="Settings", command=self.open_settings); self.settings_btn.pack(side=tk.RIGHT, padx=5)
-        
-        main_paned_window = ttk.PanedWindow(self.root, orient=tk.VERTICAL)
-        main_paned_window.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 5))
+        self.settings_manager = SettingsManager()
+        self.project_path = ""
 
-        tree_frame = ttk.Frame(main_paned_window)
-        self.tree = ttk.Treeview(tree_frame); self.tree["columns"] = ("path", "type")
-        self.tree.column("#0", width=300, anchor=tk.W); self.tree.column("path", width=350, anchor=tk.W); self.tree.column("type", width=100, anchor=tk.W)
-        self.tree.heading("#0", text="Name", anchor=tk.W); self.tree.heading("path", text="Path", anchor=tk.W); self.tree.heading("type", text="Type", anchor=tk.W)
-        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview); self.tree.configure(yscrollcommand=vsb.set); vsb.pack(side=tk.RIGHT, fill=tk.Y)
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.tree.bind("<Button-1>", self.handle_tree_click)
-        main_paned_window.add(tree_frame, weight=3)
+        self._is_updating_checks = False
 
-        prompt_frame = ttk.LabelFrame(main_paned_window, text="🎯 Objective / Prompt (Optional)", padding="10")
-        self.prompt_text = tk.Text(prompt_frame, height=5, width=50, wrap=tk.WORD, undo=True)
-        self.prompt_text.pack(fill=tk.BOTH, expand=True)
-        main_paned_window.add(prompt_frame, weight=1)
-
-        self.prompt_text.bind("<KeyRelease>", lambda event: self.update_token_count())
-
-        status_bar = ttk.Frame(self.root, relief=tk.SUNKEN, padding="2 5"); status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-        self.token_count_label = ttk.Label(status_bar, text="~0 tokens"); self.token_count_label.pack(side=tk.RIGHT)
-        ttk.Label(status_bar, text="Estimated Size:").pack(side=tk.RIGHT, padx=(0,5))
+        self.init_ui()
+        if len(sys.argv) > 1 and os.path.isdir(sys.argv[1]):
+            self.load_project(sys.argv[1])
     
-    def open_settings(self): SettingsWindow(self.root, self.settings_manager, self.on_settings_closed)
-    def on_settings_closed(self):
-        if self.project_path: self.load_project(self.project_path)
+    def init_ui(self):
+        # ... (This entire method is correct, no changes needed here) ...
+        # Central widget and main layout
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout(central_widget)
 
+        # Top button layout
+        button_layout = QHBoxLayout()
+        self.select_btn = QPushButton("Select Project Folder")
+        self.generate_btn = QPushButton("Generate Documentation")
+        self.settings_btn = QPushButton("Settings")
+        self.generate_btn.setEnabled(False)
+        button_layout.addWidget(self.select_btn)
+        button_layout.addWidget(self.generate_btn)
+        button_layout.addStretch()
+        button_layout.addWidget(self.settings_btn)
+        main_layout.addLayout(button_layout)
+
+        # Tree View for file hierarchy
+        self.tree_view = QTreeView()
+        self.tree_model = QStandardItemModel()
+        self.tree_model.setHorizontalHeaderLabels(['Name', 'Path', 'Type'])
+        self.tree_view.setModel(self.tree_model)
+        self.tree_view.setColumnWidth(0, 350)
+        main_layout.addWidget(self.tree_view, stretch=3)
+
+        # Prompt Text Area
+        main_layout.addWidget(QLabel("🎯 Objective / Prompt (Optional)"))
+        self.prompt_text = QTextEdit()
+        main_layout.addWidget(self.prompt_text, stretch=1)
+
+        # Status Bar
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.token_count_label = QLabel("Estimated Size: ~0 tokens")
+        self.status_bar.addPermanentWidget(self.token_count_label)
+
+        # --- Signal and Slot Connections ---
+        self.select_btn.clicked.connect(self.select_folder_dialog)
+        self.settings_btn.clicked.connect(self.open_settings)
+        self.generate_btn.clicked.connect(self.generate_markdown)
+        self.tree_model.itemChanged.connect(self.on_item_changed)
+        self.prompt_text.textChanged.connect(self.update_token_count)
+
+    # --- NO CHANGES to select_folder_dialog, load_project, populate_tree, on_item_changed, open_settings ---
+    # These methods are all correct and do not need to be changed.
+    @Slot()
     def select_folder_dialog(self):
-        folder = filedialog.askdirectory(title="Select Project Root Folder")
-        if folder: self.load_project(folder)
+        folder = QFileDialog.getExistingDirectory(self, "Select Project Root Folder")
+        if folder:
+            self.load_project(folder)
 
     def load_project(self, path):
         self.project_path = get_long_path_name(path)
-        self.clear_tree(); self.populate_tree(self.project_path, ""); self.generate_btn.config(state=tk.NORMAL)
-        
-    def clear_tree(self):
-        self.tree.delete(*self.tree.get_children()); self.file_states = {}; self.update_token_count()
-        
-    def populate_tree(self, path, parent_node):
-        exclude_list = self.settings_manager.get("exclude_list"); exclude_dotfiles = self.settings_manager.get("exclude_dotfiles"); extension_map = self.settings_manager.get("extension_map")
+        self.tree_model.removeRows(0, self.tree_model.rowCount()) # Clear existing tree
+        self.populate_tree(self.project_path, self.tree_model.invisibleRootItem())
+        self.generate_btn.setEnabled(True)
+        self.update_token_count()
+
+    def populate_tree(self, path, parent_item):
+        exclude_list = self.settings_manager.get("exclude_list")
+        exclude_dotfiles = self.settings_manager.get("exclude_dotfiles")
+        extension_map = self.settings_manager.get("extension_map")
+
         try: items = sorted(os.listdir(path))
         except PermissionError: return
-        for item in items:
-            if item in exclude_list or (exclude_dotfiles and item.startswith('.')): continue
-            full_path = os.path.join(path, item)
+
+        for name in items:
+            if name in exclude_list or (exclude_dotfiles and name.startswith('.')): continue
+            
+            full_path = os.path.join(path, name)
             relative_path = os.path.relpath(full_path, self.project_path)
+            
+            name_item = QStandardItem(name)
+            name_item.setCheckable(True)
+            name_item.setEditable(False)
+            name_item.setData(full_path, Qt.UserRole) # Store full path in item
+
+            path_item = QStandardItem(relative_path)
+            path_item.setEditable(False)
+            
             if os.path.isdir(full_path):
-                node = self.tree.insert(parent_node, "end", text=f"[ ] {item}", values=(relative_path, "Folder"), open=False)
-                self.file_states[node] = {"checked": False, "path": full_path, "type": "folder", "children": []}
-                if parent_node in self.file_states: self.file_states[parent_node]["children"].append(node)
-                self.populate_tree(full_path, node)
+                type_item = QStandardItem("Folder")
+                type_item.setEditable(False)
+                parent_item.appendRow([name_item, path_item, type_item])
+                self.populate_tree(full_path, name_item) # Recurse
             else:
-                _, ext = os.path.splitext(item)
+                _, ext = os.path.splitext(name)
                 if ext.lower() in extension_map:
-                    node = self.tree.insert(parent_node, "end", text=f"[ ] {item}", values=(relative_path, ext[1:].upper()))
-                    self.file_states[node] = {"checked": False, "path": full_path, "type": "file"}
-                    if parent_node in self.file_states: self.file_states[parent_node]["children"].append(node)
-                            
-    def handle_tree_click(self, event):
-        region = self.tree.identify_region(event.x, event.y)
-        if region != "tree": return
-        item = self.tree.identify_row(event.y)
-        if not item or item not in self.file_states: return
-        new_state = not self.file_states[item]["checked"]
-        self.set_item_state(item, new_state)
-        if self.file_states[item]["type"] == "folder": self.update_children(item, new_state)
-        self.update_parents(item)
-        self.update_token_count()
+                    type_item = QStandardItem(ext[1:].upper())
+                    type_item.setEditable(False)
+                    parent_item.appendRow([name_item, path_item, type_item])
+    
+    @Slot(QStandardItem)
+    def on_item_changed(self, item):
+        if self._is_updating_checks: return # Prevent recursion
+
+        self._is_updating_checks = True
+        # Update children if a folder is checked/unchecked
+        if item.hasChildren():
+            for row in range(item.rowCount()):
+                child = item.child(row, 0)
+                if child and child.isCheckable():
+                    child.setCheckState(item.checkState())
         
-    def set_item_state(self, item, state):
-        if item not in self.file_states: return
-        self.file_states[item]["checked"] = state
-        base_text = self.tree.item(item, "text")
-        if re.match(r"\[[✔~ ]\] ", base_text): base_text = base_text[4:]
-        if state is True: display_text = f"[✔] {base_text}"
-        elif state is False: display_text = f"[ ] {base_text}"
-        else: display_text = f"[~] {base_text}"
-        self.tree.item(item, text=display_text)
+        # Update parent state
+        parent = item.parent()
+        if parent:
+            child_states = [parent.child(row, 0).checkState() for row in range(parent.rowCount())]
+            if all(s == Qt.CheckState.Checked for s in child_states):
+                parent.setCheckState(Qt.CheckState.Checked)
+            elif all(s == Qt.CheckState.Unchecked for s in child_states):
+                parent.setCheckState(Qt.CheckState.Unchecked)
+            else:
+                parent.setCheckState(Qt.CheckState.PartiallyChecked)
+        
+        self._is_updating_checks = False
+        self.update_token_count()
+    
+    # --- FIX: New recursive helper function ---
+    def _get_checked_file_paths(self, parent_item):
+        """Recursively traverses the model to find all checked files."""
+        paths = []
+        for row in range(parent_item.rowCount()):
+            child_item = parent_item.child(row, 0)
+            if not child_item:
+                continue
+            
+            # If it's a folder, recurse into it
+            if child_item.hasChildren():
+                paths.extend(self._get_checked_file_paths(child_item))
+            # If it's a file and it's checked, add its path
+            elif child_item.checkState() == Qt.CheckState.Checked:
+                file_path = child_item.data(Qt.UserRole)
+                if file_path:
+                    paths.append(file_path)
+        return paths
 
-    def update_children(self, item, state):
-        for child in self.file_states.get(item, {}).get("children", []):
-            self.set_item_state(child, state)
-            if self.file_states[child]["type"] == "folder": self.update_children(child, state)
-                    
-    def update_parents(self, item):
-        parent = self.tree.parent(item)
-        if not parent or parent not in self.file_states: return
-        children = self.file_states[parent].get("children", [])
-        if not children: return
-        checked_states = [self.file_states[c]["checked"] for c in children if c in self.file_states]
-        if all(s is True for s in checked_states): new_state = True
-        elif all(s is False for s in checked_states): new_state = False
-        else: new_state = None
-        if self.file_states[parent]["checked"] != new_state:
-            self.set_item_state(parent, new_state); self.update_parents(parent)
-
+    # --- FIX: Reworked update_token_count ---
     def update_token_count(self):
-        total_chars = 0
-        prompt_content = self.prompt_text.get("1.0", tk.END)
-        if len(prompt_content) > 1:
-            total_chars += len(prompt_content) - 1
-        for item, info in self.file_states.items():
-            if info["type"] == "file" and info["checked"]:
-                try:
-                    with open(info["path"], "r", encoding="utf-8", errors="ignore") as f:
-                        total_chars += len(f.read())
-                except (IOError, OSError): continue
-        estimated_tokens = int(total_chars / 4)
-        self.token_count_label.config(text=f"~{estimated_tokens:,} tokens")
+        total_chars = len(self.prompt_text.toPlainText())
+        
+        # Use the new helper function to get the list of files
+        root = self.tree_model.invisibleRootItem()
+        checked_files = self._get_checked_file_paths(root)
 
+        for file_path in checked_files:
+            try:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    total_chars += len(f.read())
+            except (IOError, OSError):
+                continue
+        
+        estimated_tokens = int(total_chars / 4)
+        self.token_count_label.setText(f"Estimated Size: ~{estimated_tokens:,} tokens")
+
+    @Slot()
+    def open_settings(self):
+        dialog = SettingsWindow(self.settings_manager, self)
+        if dialog.exec(): # exec() returns true if accepted
+            if self.project_path:
+                self.load_project(self.project_path) # Reload project with new settings
+    
+    # --- UNCHANGED LOGIC: _generate_tree_structure ---
     def _generate_tree_structure(self, file_paths):
+        # This function's logic is UI-independent and remains the same.
         tree = {}
         for path in file_paths:
             parts = path.replace(os.sep, '/').split('/')
@@ -262,7 +309,6 @@ class ProjectDocumenter:
             for part in parts:
                 if part not in current_level: current_level[part] = {}
                 current_level = current_level[part]
-
         lines = ["."]; P_C, P_S = "├── ", "│   "; E_C, E_S = "└── ", "    "
         def _build_lines(d, prefix=""):
             items = sorted(d.keys())
@@ -276,40 +322,39 @@ class ProjectDocumenter:
         _build_lines(tree)
         return "\n".join(lines)
 
-    # --- ENTIRELY REWORKED FUNCTION ---
+    # --- FIX: Reworked generate_markdown ---
     def generate_markdown(self):
-        prompt_text = self.prompt_text.get("1.0", tk.END).strip()
-        selected_files = sorted([info["path"] for info in self.file_states.values() if info["type"] == "file" and info["checked"]])
+        prompt_text = self.prompt_text.toPlainText().strip()
+        
+        # Use the new helper function to get the list of files
+        root = self.tree_model.invisibleRootItem()
+        selected_files = sorted(self._get_checked_file_paths(root))
 
         if not selected_files and not prompt_text:
-            return messagebox.showinfo("Info", "No files selected and no prompt provided.")
+            QMessageBox.information(self, "Info", "No files selected and no prompt provided.")
+            return
         
-        output_file = filedialog.asksaveasfilename(defaultextension=".md", filetypes=[("Markdown", "*.md"), ("All", "*.*")])
+        output_file, _ = QFileDialog.getSaveFileName(self, "Save Documentation", "", "Markdown Files (*.md);;All Files (*)")
         if not output_file:
             return
 
-        # --- Determine which sections to include ---
+        # --- The rest of the markdown generation logic is mostly unchanged ---
         has_objective = bool(prompt_text)
-        
         show_structure_setting = self.settings_manager.get("show_project_structure")
         has_structure = show_structure_setting and selected_files
-        
         known_deps = ['requirements.txt', 'package.json', 'Pipfile', 'pyproject.toml', 'pom.xml', 'build.gradle']
         dependency_files = [p for p in selected_files if os.path.basename(p) in known_deps]
         has_dependencies = bool(dependency_files)
-        
         main_code_files = [p for p in selected_files if p not in dependency_files]
         has_main_files = bool(main_code_files)
 
         try:
             with open(output_file, "w", encoding="utf-8") as f:
-                # --- 1. Objective (Optional) ---
                 if has_objective:
                     f.write("# 🎯 Objective\n\n")
                     f.write(prompt_text)
                     f.write("\n\n---\n\n")
 
-                # --- 2. Project Context Wrapper (only if there's content) ---
                 if has_structure or has_dependencies or has_main_files:
                     project_name = os.path.basename(os.path.normpath(self.project_path))
                     f.write(f"## 📚 Project Context: `{project_name}`\n\n")
@@ -317,14 +362,14 @@ class ProjectDocumenter:
 
                     section_counter = 1
 
-                    # --- Section: Project Structure ---
+                    # Section: Project Structure
                     if has_structure:
                         f.write(f"### {section_counter}. Project Structure\n\n")
                         relative_paths = [os.path.relpath(p, self.project_path) for p in selected_files]
                         f.write(f"```\n{self._generate_tree_structure(relative_paths)}\n```\n\n")
                         section_counter += 1
 
-                    # --- Section: Dependencies ---
+                    # Section: Dependencies
                     if has_dependencies:
                         f.write(f"### {section_counter}. Dependencies\n\n")
                         for dep_path in dependency_files:
@@ -340,7 +385,7 @@ class ProjectDocumenter:
                             f.write("\n```\n\n")
                         section_counter += 1
 
-                    # --- Section: File Contents ---
+                    # Section: File Contents
                     if has_main_files:
                         f.write(f"### {section_counter}. File Contents\n\n")
                         extension_map = self.settings_manager.get("extension_map")
@@ -357,15 +402,12 @@ class ProjectDocumenter:
                             except Exception as e:
                                 f.write(f"Error reading file: {e}")
                             f.write("\n```\n\n")
-                        section_counter += 1
-
-            messagebox.showinfo("Success", f"Documentation generated at:\n{output_file}")
+            QMessageBox.information(self, "Success", f"Documentation generated at:\n{output_file}")
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to generate documentation:\n{e}")
+            QMessageBox.critical(self, "Error", f"Failed to generate documentation:\n{e}")
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = ProjectDocumenter(root)
-    if len(sys.argv) > 1 and os.path.isdir(sys.argv[1]):
-        app.load_project(sys.argv[1])
-    root.mainloop()
+    app = QApplication(sys.argv)
+    main_window = ProjectDocumenter()
+    main_window.show()
+    sys.exit(app.exec())
