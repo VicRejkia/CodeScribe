@@ -25,5 +25,6 @@
         ".env",
         "__init__.py"
     ],
-    "exclude_dotfiles": true
+    "exclude_dotfiles": true,
+    "show_project_structure": true
 }

@@ -10,6 +10,7 @@ import ctypes
 from ctypes import wintypes
 from collections import defaultdict
 
+# --- Unchanged Functions: get_long_path_name ---
 def get_long_path_name(short_path):
     if sys.platform != 'win32':
         return short_path
@@ -45,15 +46,23 @@ class SettingsManager:
             "exclude_list": [
                 "__pycache__", ".git", ".vscode", "node_modules", "venv", ".env"
             ],
-            "exclude_dotfiles": True
+            "exclude_dotfiles": True,
+            # --- NEW: Setting to control project structure visibility ---
+            "show_project_structure": True
         }
 
     def load_settings(self):
         try:
-            with open(self.filename, 'r') as f: self.settings = json.load(f)
+            with open(self.filename, 'r') as f:
+                loaded_settings = json.load(f)
+                # --- CHANGED: Ensure new settings have default values ---
+                defaults = self._create_default_settings()
+                defaults.update(loaded_settings)
+                self.settings = defaults
         except (FileNotFoundError, json.JSONDecodeError):
             self.settings = self._create_default_settings()
             self.save_settings()
+
 
     def save_settings(self):
         try:
@@ -65,7 +74,6 @@ class SettingsManager:
     def set(self, key, value): self.settings[key] = value
 
 class SettingsWindow(tk.Toplevel):
-    # This class remains unchanged from the previous version
     def __init__(self, parent, settings_manager, on_close_callback):
         super().__init__(parent)
         self.settings_manager = settings_manager
@@ -76,16 +84,29 @@ class SettingsWindow(tk.Toplevel):
 
     def create_widgets(self):
         main_frame = ttk.Frame(self, padding="10"); main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Exclusion and Options Frame
+        options_frame = ttk.LabelFrame(main_frame, text="Options", padding="10"); options_frame.pack(fill=tk.X, expand=True, pady=5)
+        self.exclude_dotfiles_var = tk.BooleanVar(value=self.settings_manager.get("exclude_dotfiles"))
+        ttk.Checkbutton(options_frame, text="Exclude all files and folders starting with '.'", variable=self.exclude_dotfiles_var).pack(anchor=tk.W)
+        
+        # --- NEW: Checkbox for showing project structure ---
+        self.show_structure_var = tk.BooleanVar(value=self.settings_manager.get("show_project_structure"))
+        ttk.Checkbutton(options_frame, text="Include 'Project Structure' tree in output", variable=self.show_structure_var).pack(anchor=tk.W)
+
+        # Exclude list frame
         exclude_frame = ttk.LabelFrame(main_frame, text="Exclusion Filters", padding="10"); exclude_frame.pack(fill=tk.X, expand=True, pady=5)
         ttk.Label(exclude_frame, text="Exclude files/folders by name (one per line):").pack(anchor=tk.W)
         self.exclude_text = tk.Text(exclude_frame, height=8, width=50); self.exclude_text.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
         self.exclude_text.insert("1.0", "\n".join(self.settings_manager.get("exclude_list")))
-        self.exclude_dotfiles_var = tk.BooleanVar(value=self.settings_manager.get("exclude_dotfiles"))
-        ttk.Checkbutton(exclude_frame, text="Exclude all files and folders starting with '.'", variable=self.exclude_dotfiles_var).pack(anchor=tk.W)
+
+        # Mappings Frame
         ext_frame = ttk.LabelFrame(main_frame, text="File Type Mappings", padding="10"); ext_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         ttk.Label(ext_frame, text="Map extensions to Markdown language identifiers:").pack(anchor=tk.W)
         self.ext_map_text = tk.Text(ext_frame, height=10, width=50); self.ext_map_text.pack(fill=tk.BOTH, expand=True)
         self.ext_map_text.insert("1.0", json.dumps(self.settings_manager.get("extension_map"), indent=4))
+
+        # Buttons
         button_frame = ttk.Frame(main_frame); button_frame.pack(fill=tk.X, pady=10)
         ttk.Button(button_frame, text="Save & Close", command=self.save_and_close).pack(side=tk.RIGHT, padx=5)
         ttk.Button(button_frame, text="Cancel", command=self.destroy).pack(side=tk.RIGHT)
@@ -94,6 +115,10 @@ class SettingsWindow(tk.Toplevel):
         exclude_list = self.exclude_text.get("1.0", tk.END).strip().split("\n")
         self.settings_manager.set("exclude_list", [item.strip() for item in exclude_list if item.strip()])
         self.settings_manager.set("exclude_dotfiles", self.exclude_dotfiles_var.get())
+        
+        # --- NEW: Save the state of the new checkbox ---
+        self.settings_manager.set("show_project_structure", self.show_structure_var.get())
+        
         ext_map_str = self.ext_map_text.get("1.0", tk.END)
         try:
             new_ext_map = ast.literal_eval(ext_map_str)
@@ -106,9 +131,10 @@ class SettingsWindow(tk.Toplevel):
         self.on_close_callback()
         self.destroy()
 
+# --- Unchanged Class: ProjectDocumenter (except for generate_markdown) ---
 class ProjectDocumenter:
     def __init__(self, root):
-        self.root = root; self.root.title("LLM-Sherpa"); self.root.geometry("800x650")
+        self.root = root; self.root.title("LLM-Sherpa"); self.root.geometry("800x750")
         self.settings_manager = SettingsManager(); self.project_path = ""; self.file_states = {}
         self.create_ui()
 
@@ -118,22 +144,31 @@ class ProjectDocumenter:
         self.generate_btn = ttk.Button(top_frame, text="Generate Documentation", command=self.generate_markdown, state=tk.DISABLED); self.generate_btn.pack(side=tk.LEFT, padx=5)
         self.settings_btn = ttk.Button(top_frame, text="Settings", command=self.open_settings); self.settings_btn.pack(side=tk.RIGHT, padx=5)
         
-        tree_frame = ttk.Frame(self.root); tree_frame.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+        main_paned_window = ttk.PanedWindow(self.root, orient=tk.VERTICAL)
+        main_paned_window.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 5))
+
+        tree_frame = ttk.Frame(main_paned_window)
         self.tree = ttk.Treeview(tree_frame); self.tree["columns"] = ("path", "type")
         self.tree.column("#0", width=300, anchor=tk.W); self.tree.column("path", width=350, anchor=tk.W); self.tree.column("type", width=100, anchor=tk.W)
         self.tree.heading("#0", text="Name", anchor=tk.W); self.tree.heading("path", text="Path", anchor=tk.W); self.tree.heading("type", text="Type", anchor=tk.W)
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview); self.tree.configure(yscrollcommand=vsb.set); vsb.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.tree.bind("<Button-1>", self.handle_tree_click)
+        main_paned_window.add(tree_frame, weight=3)
 
-        # Status Bar for Token Count
+        prompt_frame = ttk.LabelFrame(main_paned_window, text="🎯 Objective / Prompt (Optional)", padding="10")
+        self.prompt_text = tk.Text(prompt_frame, height=5, width=50, wrap=tk.WORD, undo=True)
+        self.prompt_text.pack(fill=tk.BOTH, expand=True)
+        main_paned_window.add(prompt_frame, weight=1)
+
+        self.prompt_text.bind("<KeyRelease>", lambda event: self.update_token_count())
+
         status_bar = ttk.Frame(self.root, relief=tk.SUNKEN, padding="2 5"); status_bar.pack(side=tk.BOTTOM, fill=tk.X)
         self.token_count_label = ttk.Label(status_bar, text="~0 tokens"); self.token_count_label.pack(side=tk.RIGHT)
         ttk.Label(status_bar, text="Estimated Size:").pack(side=tk.RIGHT, padx=(0,5))
     
     def open_settings(self): SettingsWindow(self.root, self.settings_manager, self.on_settings_closed)
     def on_settings_closed(self):
-        messagebox.showinfo("Settings Saved", "Settings updated. The file tree will now be refreshed.")
         if self.project_path: self.load_project(self.project_path)
 
     def select_folder_dialog(self):
@@ -166,7 +201,7 @@ class ProjectDocumenter:
                     node = self.tree.insert(parent_node, "end", text=f"[ ] {item}", values=(relative_path, ext[1:].upper()))
                     self.file_states[node] = {"checked": False, "path": full_path, "type": "file"}
                     if parent_node in self.file_states: self.file_states[parent_node]["children"].append(node)
-                        
+                            
     def handle_tree_click(self, event):
         region = self.tree.identify_region(event.x, event.y)
         if region != "tree": return
@@ -182,7 +217,7 @@ class ProjectDocumenter:
         if item not in self.file_states: return
         self.file_states[item]["checked"] = state
         base_text = self.tree.item(item, "text")
-        if re.match(r"\[[✔✔~ ]\] ", base_text): base_text = base_text[4:]
+        if re.match(r"\[[✔~ ]\] ", base_text): base_text = base_text[4:]
         if state is True: display_text = f"[✔] {base_text}"
         elif state is False: display_text = f"[ ] {base_text}"
         else: display_text = f"[~] {base_text}"
@@ -207,13 +242,15 @@ class ProjectDocumenter:
 
     def update_token_count(self):
         total_chars = 0
+        prompt_content = self.prompt_text.get("1.0", tk.END)
+        if len(prompt_content) > 1:
+            total_chars += len(prompt_content) - 1
         for item, info in self.file_states.items():
             if info["type"] == "file" and info["checked"]:
                 try:
                     with open(info["path"], "r", encoding="utf-8", errors="ignore") as f:
                         total_chars += len(f.read())
                 except (IOError, OSError): continue
-        # Simple heuristic: 1 token ~ 4 characters
         estimated_tokens = int(total_chars / 4)
         self.token_count_label.config(text=f"~{estimated_tokens:,} tokens")
 
@@ -239,118 +276,89 @@ class ProjectDocumenter:
         _build_lines(tree)
         return "\n".join(lines)
 
+    # --- ENTIRELY REWORKED FUNCTION ---
     def generate_markdown(self):
-        if not self.project_path:
-            return messagebox.showwarning("Warning", "Please select a project folder.")
+        prompt_text = self.prompt_text.get("1.0", tk.END).strip()
+        selected_files = sorted([info["path"] for info in self.file_states.values() if info["type"] == "file" and info["checked"]])
+
+        if not selected_files and not prompt_text:
+            return messagebox.showinfo("Info", "No files selected and no prompt provided.")
         
-        selected_files = sorted([
-            info["path"] for info in self.file_states.values() 
-            if info["type"] == "file" and info["checked"]
-        ])
-        if not selected_files:
-            return messagebox.showinfo("Info", "No files were selected.")
-        
-        output_file = filedialog.asksaveasfilename(
-            defaultextension=".md", 
-            filetypes=[("Markdown", "*.md"), ("All", "*.*")]
-        )
+        output_file = filedialog.asksaveasfilename(defaultextension=".md", filetypes=[("Markdown", "*.md"), ("All", "*.*")])
         if not output_file:
             return
 
-        # --- Pre-processing for Dependencies and SQL Consolidation ---
+        # --- Determine which sections to include ---
+        has_objective = bool(prompt_text)
+        
+        show_structure_setting = self.settings_manager.get("show_project_structure")
+        has_structure = show_structure_setting and selected_files
+        
         known_deps = ['requirements.txt', 'package.json', 'Pipfile', 'pyproject.toml', 'pom.xml', 'build.gradle']
         dependency_files = [p for p in selected_files if os.path.basename(p) in known_deps]
+        has_dependencies = bool(dependency_files)
+        
         main_code_files = [p for p in selected_files if p not in dependency_files]
-        relative_paths = [os.path.relpath(p, self.project_path) for p in selected_files]
-
-        # Group main files by directory for consolidation logic
-        grouped_files = defaultdict(lambda: defaultdict(list))
-        for file_path in main_code_files:
-            directory = os.path.dirname(os.path.relpath(file_path, self.project_path))
-            ext = os.path.splitext(file_path)[1].lower()
-            if ext == '.sql':
-                grouped_files[directory]['sql'].append(file_path)
-            else:
-                grouped_files[directory]['other'].append(file_path)
+        has_main_files = bool(main_code_files)
 
         try:
             with open(output_file, "w", encoding="utf-8") as f:
-                project_name = os.path.basename(os.path.normpath(self.project_path))
-                f.write(f"# `{project_name}` Project Files\n\n")
-                f.write(f"📅 Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"📂 Project root: `{self.project_path}`\n\n---\n\n")
+                # --- 1. Objective (Optional) ---
+                if has_objective:
+                    f.write("# 🎯 Objective\n\n")
+                    f.write(prompt_text)
+                    f.write("\n\n---\n\n")
 
-                # --- 1. Project Structure Tree ---
-                f.write("## 🌳 Project Structure (Selected Files)\n\n")
-                f.write(f"```\n{self._generate_tree_structure(relative_paths)}\n```\n\n---\n\n")
+                # --- 2. Project Context Wrapper (only if there's content) ---
+                if has_structure or has_dependencies or has_main_files:
+                    project_name = os.path.basename(os.path.normpath(self.project_path))
+                    f.write(f"## 📚 Project Context: `{project_name}`\n\n")
+                    f.write("This document provides the necessary files and structure for the task.\n\n")
 
-                # --- 2. Dependencies Section ---
-                if dependency_files:
-                    f.write("## ⚙️ Dependencies\n\n")
-                    for dep_path in dependency_files:
-                        filename = os.path.basename(dep_path)
-                        relative_dep_path = os.path.relpath(dep_path, self.project_path).replace(os.sep, '/')
-                        
-                        f.write(f"### 📄 {filename}\n")
-                        f.write(f"*path: `{relative_dep_path}`*\n\n")
-                        f.write("---\n\n")
-                        
-                        f.write("```\n")
-                        try:
-                            with open(dep_path, "r", encoding="utf-8", errors='replace') as src:
-                                f.write(src.read())
-                        except Exception as e:
-                            f.write(f"")
-                        f.write("\n```\n\n")
-                    f.write("---\n\n")
-                
-                # --- 3. Main File Contents Section ---
-                f.write("## 📄 File Contents\n\n")
-                extension_map = self.settings_manager.get("extension_map")
-                
-                for directory in sorted(grouped_files.keys()):
-                    files_in_dir = grouped_files[directory]
-                    display_dir = directory.replace(os.sep, "/") if directory else "(Root)"
-                    f.write(f"### 📂 `{display_dir}`\n\n")
+                    section_counter = 1
 
-                    # --- SQL CONSOLIDATION BLOCK ---
-                    if files_in_dir['sql']:
-                        f.write("### 📄 SQL Schema Files (Consolidated)\n\n")
-                        f.write("---\n\n")
-                        f.write("```sql\n")
-                        for i, sql_path in enumerate(sorted(files_in_dir['sql'])):
-                            if i > 0:
-                                f.write("\n\n-- -- -- -- -- -- -- -- -- --\n\n")
-                            
-                            filename = os.path.basename(sql_path)
-                            relative_sql_path = os.path.relpath(sql_path, self.project_path).replace(os.sep, '/')
-                            f.write(f"-- From: {filename} | path: {relative_sql_path}\n")
+                    # --- Section: Project Structure ---
+                    if has_structure:
+                        f.write(f"### {section_counter}. Project Structure\n\n")
+                        relative_paths = [os.path.relpath(p, self.project_path) for p in selected_files]
+                        f.write(f"```\n{self._generate_tree_structure(relative_paths)}\n```\n\n")
+                        section_counter += 1
+
+                    # --- Section: Dependencies ---
+                    if has_dependencies:
+                        f.write(f"### {section_counter}. Dependencies\n\n")
+                        for dep_path in dependency_files:
+                            filename = os.path.basename(dep_path)
+                            relative_dep_path = os.path.relpath(dep_path, self.project_path).replace(os.sep, '/')
+                            f.write(f"#### `{filename}`\n*path: `{relative_dep_path}`*\n\n")
+                            f.write("```\n")
                             try:
-                                with open(sql_path, 'r', encoding='utf-8', errors='replace') as src:
-                                    f.write(src.read().strip())
+                                with open(dep_path, "r", encoding="utf-8", errors='replace') as src:
+                                    f.write(src.read())
                             except Exception as e:
-                                f.write(f"/* Error reading file: {e} */")
-                        f.write("\n```\n\n")
+                                f.write(f"Error reading file: {e}")
+                            f.write("\n```\n\n")
+                        section_counter += 1
 
-                    # --- OTHER FILES BLOCK ---
-                    for file_path in sorted(files_in_dir['other']):
-                        filename = os.path.basename(file_path)
-                        relative_file_path = os.path.relpath(file_path, self.project_path).replace(os.sep, '/')
-                        ext = os.path.splitext(filename)[1].lower()
-                        lang = extension_map.get(ext, "")
-                        
-                        f.write(f"### 📄 {filename}\n")
-                        f.write(f"*path: `{relative_file_path}`*\n\n")
-                        f.write("---\n\n")
-                        
-                        f.write(f"```{lang}\n")
-                        try:
-                            with open(file_path, "r", encoding="utf-8", errors='replace') as src:
-                                f.write(src.read())
-                        except Exception as e:
-                            f.write(f"")
-                        f.write("\n```\n\n")
-            
+                    # --- Section: File Contents ---
+                    if has_main_files:
+                        f.write(f"### {section_counter}. File Contents\n\n")
+                        extension_map = self.settings_manager.get("extension_map")
+                        for file_path in main_code_files:
+                            filename = os.path.basename(file_path)
+                            relative_file_path = os.path.relpath(file_path, self.project_path).replace(os.sep, '/')
+                            ext = os.path.splitext(filename)[1].lower()
+                            lang = extension_map.get(ext, "")
+                            f.write(f"#### 📄 `{filename}`\n\n*path: `{relative_file_path}`*\n\n")
+                            f.write(f"```{lang}\n")
+                            try:
+                                with open(file_path, "r", encoding="utf-8", errors='replace') as src:
+                                    f.write(src.read())
+                            except Exception as e:
+                                f.write(f"Error reading file: {e}")
+                            f.write("\n```\n\n")
+                        section_counter += 1
+
             messagebox.showinfo("Success", f"Documentation generated at:\n{output_file}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to generate documentation:\n{e}")
